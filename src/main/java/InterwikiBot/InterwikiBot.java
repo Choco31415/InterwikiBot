@@ -1,4 +1,4 @@
-package WikiBot;
+package InterwikiBot;
 
 import java.awt.event.ActionEvent;
 import java.io.IOException;
@@ -14,16 +14,15 @@ import java.util.logging.Level;
 
 import org.apache.commons.lang3.text.WordUtils;
 
-import WikiBot.APIcommands.*;
-import WikiBot.ContentRep.*;
-import WikiBot.Core.BotPanel;
-import WikiBot.MediawikiData.MediawikiDataManager;
+import JavaMediawikiBot.*;
 
 @SuppressWarnings("unused")
-public class InterwikiBot extends BotPanel {
+public class InterwikiBot {
 
 	private static final long serialVersionUID = 1L;
 
+	private static MediawikiBot bot;
+	
 	public BufferPool<String, PLtoCG> downloadBuffer;
 
 	int batchSize = 25;
@@ -37,7 +36,7 @@ public class InterwikiBot extends BotPanel {
 	 * This is where I initialize my custom Mediawiki bot.
 	 */
 	public InterwikiBot() {
-		super("Scratch", "nl");
+		bot = new MediawikiBot(new Path("./src/main/resources/ScratchFamily.txt"), "en");
 
 		// Preferences
 		setPanelName("InterwikiBot");
