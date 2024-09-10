@@ -1,11 +1,11 @@
-package WikiBot;
+package InterwikiBot;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
-import WikiBot.ContentRep.PageLocation;
+import Content.PageLocation;
 
 public class ConnectionGraph {
 	Map<PageLocation, ArrayList<PageLocation>> knownConnections;

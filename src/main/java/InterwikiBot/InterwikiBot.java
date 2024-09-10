@@ -4,6 +4,7 @@ import java.awt.event.ActionEvent;
 import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.net.URLEncoder;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -11,13 +12,22 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.logging.Level;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import org.apache.commons.lang3.text.WordUtils;
 
-import JavaMediawikiBot.*;
+import APIcommands.APIcommand;
+import APIcommands.AppendText;
+import Content.Interwiki;
+import Content.Link;
+import Content.Page;
+import Content.PageLocation;
+import Content.Template;
+import WikiBot.MediawikiBot;
 
 @SuppressWarnings("unused")
-public class InterwikiBot {
+public class InterwikiBot implements Runnable {
 
 	private static final long serialVersionUID = 1L;
 
@@ -35,37 +45,30 @@ public class InterwikiBot {
 	/*
 	 * This is where I initialize my custom Mediawiki bot.
 	 */
-	public InterwikiBot() {
-		bot = new MediawikiBot(new Path("./src/main/resources/ScratchFamily.txt"), "en");
+	public InterwikiBot() throws IOException {
+		Path familyFile = Paths.get("./src/main/resources/ScratchFamily.txt");
+		
+		bot = new MediawikiBot(familyFile, "en");
 
 		// Preferences
-		setPanelName("InterwikiBot");
+		bot.queryLimit = batchSize;// The amount of items to get per query call.
 
-		botUsername = "InterwikiBot";
+		bot.APIdelay = 0.5;// Minimum time between any API commands.
+		bot.setWaitBetweenProposedCommands(12);// Minimum time between edits.
 
-		APIlimit = batchSize;// The amount of items to get per query call, if
-								// there are multiple items.
-		getRevisions = false;// Don't get page revisions.
-
-		APIthrottle = 0.5;// Minimum time between any API commands.
-		waitTimeBetweenProposedCommands = 12;// Minimum time between edits.
-
-		setLoggerLevel(Level.FINE);// How fine should the logger be? Visit
-									// NetworkingBase.java for logger level
-									// info.
+		// setLoggerLevel(Level.FINE);// TODO:
 	}
 
-	public static void main(String[] args) {
-		InterwikiBot bot = new InterwikiBot(); // Start GUI
+	public void main(String[] args) {
+		bot.displayGUI("Interwiki Bot", this); // TODO:
 	}
 
 	/*
 	 * This is where I put my bot code.
 	 */
-	@Override
-	public void code() {		
-		for (String wikiToProcess: MediawikiDataManager.instance.getWikiPrefixes()) {
-			logInfo("Starting scan of all articles for wiki " + wikiToProcess + ".");
+	public void run() {	
+		for (String wikiToProcess: bot.getMDM().getWikiPrefixes()) {
+			bot.logInfo("Starting scan of all articles for wiki " + wikiToProcess + ".");
 			
 			String cursor = "" + ((char) 0); // Get pages starting from this point.
 			ArrayList<PageLocation> allPages;
@@ -73,30 +76,30 @@ public class InterwikiBot {
 			
 			do {
 				// Get a batch of pages...
-				allPages = this.getAllPages(wikiToProcess, batchSize, cursor);
+				allPages = bot.getAllPages(wikiToProcess, batchSize, cursor);
 				if (allPages == null) {
 					// Handle error gracefully, hate for program to crash half way through
-					logError("Could not download batch. Logging error, moving on.");
-					Level prevLogLevel = logLevel;
-					setLoggerLevel(Level.FINEST);
-					allPages = this.getAllPages(wikiToProcess, batchSize, cursor);
-					setLoggerLevel(prevLogLevel);
+					bot.logError("Could not download batch. Logging error, moving on.");
+					//Level prevLogLevel = logLevel; TODO
+					//setLoggerLevel(Level.FINEST);
+					allPages = bot.getAllPages(wikiToProcess, batchSize, cursor);
+					//setLoggerLevel(prevLogLevel);
 				} else {
 					// Process batch
 					cursor = allPages.get(allPages.size() - 1).getTitle();
 		
 					instantiateConnectionGraphs(allPages);
-					logInfo("Downloaded a new batch.");
+					bot.logInfo("Downloaded a new batch.");
 		
 					// ... and process pages until we don't have enough buffer filled.
 					while (downloadBuffer.needsFlushed()) {
-						logInfo("Flushing buffer.");
+						bot.logInfo("Flushing buffer.");
 						String language = downloadBuffer.getLargestBufferKey();
 						Queue<PLtoCG> buffer = downloadBuffer.flushPool(language);
 						processPages(buffer);
 					}
 				}
-				logInfo("Finished processing pages so far.");
+				bot.logInfo("Finished processing pages so far.");
 			} while (allPages != null && allPages.size() >= batchSize);
 	
 			// Empty the buffer to finish processing.
@@ -106,7 +109,7 @@ public class InterwikiBot {
 				processPages(buffer);
 			}
 			
-			logInfo("Finished scanning all articles for wiki " + wikiToProcess + ".");
+			bot.logInfo("Finished scanning all articles for wiki " + wikiToProcess + ".");
 		}
 	}
 
@@ -118,7 +121,7 @@ public class InterwikiBot {
 	 */
 	public void instantiateConnectionGraphs(ArrayList<PageLocation> pls) {
 		try {
-			ArrayList<Page> pages = getWikiPages(pls);
+			ArrayList<Page> pages = bot.getWikiPages(pls, false);
 
 			for (Page page : pages) {
 				// Process each page individually.
@@ -145,7 +148,7 @@ public class InterwikiBot {
 				}
 			}
 		} catch (Exception e) {
-			logError("Couldn't instantiate several graphs due to bad server API response.");
+			bot.logError("Couldn't instantiate several graphs due to bad server API response.");
 		}
 	}
 
@@ -157,8 +160,8 @@ public class InterwikiBot {
 				pls.add(c.pageLocation);
 			}
 		}
-		logInfo("Processing pages. Includes: " + pls.get(0));
-		ArrayList<Page> pages = getWikiPages(pls);
+		bot.logInfo("Processing pages. Includes: " + pls.get(0));
+		ArrayList<Page> pages = bot.getWikiPages(pls, false);
 		additionalProcessing(pages);
 
 		for (int i = 0; i < pages.size(); i++) {
@@ -169,7 +172,7 @@ public class InterwikiBot {
 			// If page is redirect, follow it.
 			while (page.getRawText().substring(0, 9).equals("#REDIRECT")) {
 				Link linkTo = page.getLinks().get(0);
-				page = getWikiPage(new PageLocation(page.getLanguage(), linkTo.getDestination()));
+				page = bot.getWikiPage(new PageLocation(page.getLanguage(), linkTo.getDestination()), false);
 			}
 
 			for (PLtoCG pc : toProcess) {
@@ -217,9 +220,9 @@ public class InterwikiBot {
 
 	public void processCompletedConnectionGraph(ConnectionGraph cg) {
 		if (cg.hasOverlappingLanguages()) {
-			logInfo("Found conflict!");
+			bot.logInfo("Found conflict!");
 			for (PageLocation pl : cg.getKnownPages()) {
-				logInfo("" + pl);
+				bot.logInfo("" + pl);
 			}
 		} else {
 			// Go to each incomplete page and append the missing interwikis.
@@ -237,7 +240,7 @@ public class InterwikiBot {
 				}
 
 				APIcommand command = new AppendText(pl, appendText, "Adding interwikis.");
-				proposeEdit(command);
+				bot.proposeEdit(command);
 			}
 
 		}

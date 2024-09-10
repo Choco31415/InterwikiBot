@@ -1,4 +1,4 @@
-package WikiBot;
+package InterwikiBot;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -6,7 +6,7 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.Queue;
 
-import WikiBot.ContentRep.PageLocation;
+import Content.PageLocation;
 
 public class BufferPool<U, V> {
 	Map<U, Queue<V>> bufferPool;
